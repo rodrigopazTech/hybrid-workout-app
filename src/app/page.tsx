@@ -92,9 +92,11 @@ export default function Home() {
   }
 
   const handleLogin = async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
+        redirectTo: origin,
         queryParams: { access_type: 'offline', prompt: 'consent' },
         scopes: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'
       }
