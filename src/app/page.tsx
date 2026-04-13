@@ -3,17 +3,18 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { parseWorkoutDescription } from '@/lib/google-calendar'
-import { Timer, Dumbbell, Calendar, ChevronRight, LogOut, Info, CheckCircle, Trophy, Zap, LayoutGrid } from 'lucide-react'
+import { Timer, Dumbbell, Calendar, ChevronRight, LogOut, Info, CheckCircle, Trophy, Zap, LayoutGrid, User as UserIcon } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import WorkoutView from '@/components/WorkoutView'
-import PlannerView from '@/components/PlannerView' // Nuevo componente
+import PlannerView from '@/components/PlannerView'
+import ProfileView from '@/components/ProfileView'
 
 export default function Home() {
   const [session, setSession] = useState<any>(null)
   const [workout, setWorkout] = useState<any>(null)
   const [allEvents, setAllEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'home' | 'planner'>('home')
+  const [view, setView] = useState<'home' | 'planner' | 'profile'>('home')
   const [isWorkoutActive, setIsWorkoutActive] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
   const [streak, setStreak] = useState(0)
@@ -24,17 +25,13 @@ export default function Home() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      if (session) {
-        fetchAllData(session.provider_token, session.user.id)
-      }
+      if (session) fetchAllData(session.provider_token, session.user.id)
       setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      if (session) {
-        fetchAllData(session?.provider_token, session.user.id)
-      }
+      if (session) fetchAllData(session?.provider_token, session.user.id)
     })
 
     return () => subscription.unsubscribe()
@@ -42,28 +39,20 @@ export default function Home() {
 
   const fetchAllData = async (token: string | null | undefined, userId: string) => {
     if (!token) return
-    await Promise.all([
-      fetchCalendar(token),
-      fetchStats(userId)
-    ])
+    await Promise.all([fetchCalendar(token), fetchStats(userId)])
   }
 
   const fetchCalendar = async (token: string) => {
     try {
-      // Pedimos 14 días para el Planner
       const res = await fetch(`/api/calendar?token=${token}&days=14`)
       const events = await res.json()
       if (events.error) throw new Error(events.error)
-
       setAllEvents(events)
-
-      // Buscar el workout de hoy
       const today = new Date().toISOString().split('T')[0]
       const workoutEvent = events.find((e: any) => {
         const eventDate = (e.start.dateTime || e.start.date).split('T')[0]
         return eventDate === today && (e.summary?.includes('GYM') || e.summary?.includes('BICI') || e.summary?.includes('RETO'))
       })
-      
       if (workoutEvent) {
         setWorkout({
           id: workoutEvent.id,
@@ -81,7 +70,6 @@ export default function Home() {
   const fetchStats = async (userId: string) => {
     const { data: workouts } = await supabase.from('workouts').select('date, calendar_event_summary').eq('user_id', userId).order('date', { ascending: false })
     if (workouts) {
-      // Lógica de racha (simplificada para brevedad en esta edición)
       const workoutDates = new Set(workouts.map(w => w.date))
       let currentStreak = 0
       let checkDate = new Date()
@@ -94,7 +82,6 @@ export default function Home() {
         checkDate.setDate(checkDate.getDate() - 1)
       }
       setStreak(currentStreak)
-
       const maxD = Math.max(0, ...workouts.map(w => {
         const m = w.calendar_event_summary?.match(/(\d)/);
         return m ? parseInt(m[1]) : 0;
@@ -104,29 +91,61 @@ export default function Home() {
   }
 
   const handleLogin = async () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: origin,
         queryParams: { access_type: 'offline', prompt: 'consent' },
-        // SCOPE ACTUALIZADO PARA ESCRITURA
         scopes: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'
       }
     })
+  }
+
+  const handleSaveWorkout = async (data: any) => {
+    try {
+      const { data: workoutRecord, error: wError } = await supabase
+        .from('workouts')
+        .insert({
+          user_id: session.user.id,
+          date: new Date().toISOString().split('T')[0],
+          calendar_event_summary: workout.title,
+          feeling_notes: data.feeling
+        })
+        .select().single()
+
+      if (wError) throw wError
+
+      const logsToInsert = data.exercises.flatMap((ex: any) => 
+        ex.sets.map((set: any, idx: number) => ({
+          workout_id: workoutRecord.id,
+          exercise_name: ex.name,
+          set_number: idx + 1,
+          reps_completed: parseInt(set.reps) || 0,
+          weight_kg: parseFloat(set.weight) || 0,
+        }))
+      )
+
+      await supabase.from('exercise_logs').insert(logsToInsert)
+      setIsWorkoutActive(false)
+      setIsSaved(true)
+      fetchStats(session.user.id)
+      setTimeout(() => setIsSaved(false), 5000)
+    } catch (err) {
+      alert('Error al guardar')
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center min-h-screen bg-background text-primary"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full" /></div>
 
   return (
     <main className="flex flex-col min-h-screen bg-background text-foreground max-w-md mx-auto relative pb-24">
-      {/* Header */}
       <header className="p-6 flex justify-between items-center bg-background/80 backdrop-blur-md sticky top-0 z-30">
         <div>
-          <h1 className="text-xl font-black tracking-tighter">HÍBRIDO <span className="text-primary">CDMX</span></h1>
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{view === 'home' ? 'Dashboard' : 'Planner Semanal'}</p>
+          <h1 className="text-xl font-black tracking-tighter text-primary italic">HÍBRIDO CDMX</h1>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+            {view === 'home' ? 'Dashboard' : view === 'planner' ? 'Planner Semanal' : 'Perfil Atleta'}
+          </p>
         </div>
-        {session && <button onClick={() => supabase.auth.signOut()} className="p-2 bg-card rounded-xl border border-muted text-muted-foreground"><LogOut size={18} /></button>}
+        {session && <button onClick={() => supabase.auth.signOut()} className="p-2 bg-card rounded-xl border border-muted text-muted-foreground hover:text-white transition-all"><LogOut size={18} /></button>}
       </header>
 
       <div className="p-6 flex-1 overflow-y-auto">
@@ -134,11 +153,11 @@ export default function Home() {
           <div className="flex-1 flex flex-col items-center justify-center text-center mt-20">
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-card p-10 rounded-[40px] border border-muted shadow-2xl relative">
               <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-primary p-4 rounded-2xl shadow-xl shadow-primary/40"><Dumbbell className="text-white w-8 h-8" /></div>
-              <h2 className="text-3xl font-black mb-4 leading-tight mt-4">Activa el<br />Planner</h2>
-              <p className="text-muted-foreground mb-10 text-sm">Necesitamos permisos de escritura para que puedas mover tus días de entrenamiento.</p>
-              <button onClick={handleLogin} className="w-full bg-white text-black font-extrabold py-5 rounded-3xl flex items-center justify-center gap-3 shadow-lg">
+              <h2 className="text-3xl font-black mb-4 leading-tight mt-4 italic">ACTIVA TU<br />POTENCIAL</h2>
+              <p className="text-muted-foreground mb-10 text-sm">Conecta tu cuenta para sincronizar tus metas y entrenamientos híbridos.</p>
+              <button onClick={handleLogin} className="w-full bg-white text-black font-extrabold py-5 rounded-3xl flex items-center justify-center gap-3 shadow-lg hover:scale-105 transition-all">
                 <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-                Conectar Calendario
+                Conectar con Google
               </button>
             </motion.div>
           </div>
@@ -148,19 +167,16 @@ export default function Home() {
               <div className="space-y-6">
                 <AnimatePresence mode="wait">
                   {workout ? (
-                    <motion.div key="w-active" whileTap={{ scale: 0.98 }} onClick={() => setIsWorkoutActive(true)} className="bg-card p-8 rounded-[40px] border border-primary/20 shadow-xl relative overflow-hidden group cursor-pointer">
+                    <motion.div key="w-active" whileTap={{ scale: 0.98 }} onClick={() => setIsWorkoutActive(true)} className="bg-card p-8 rounded-[40px] border border-primary/20 shadow-xl relative overflow-hidden group cursor-pointer bg-gradient-to-br from-card to-background">
                       <div className="absolute top-0 right-0 p-3 opacity-10"><Calendar size={120} /></div>
-                      <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-3">Hoy toca</h3>
-                      <h2 className="text-2xl font-black mb-6">{workout.title}</h2>
-                      <div className="w-full bg-primary text-white font-black py-4 rounded-3xl flex items-center justify-center gap-2">ENTRENAR AHORA <ChevronRight size={20} /></div>
+                      <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-3 italic">Rutina de Hoy</h3>
+                      <h2 className="text-2xl font-black mb-6 uppercase tracking-tight">{workout.title}</h2>
+                      <div className="w-full bg-primary text-white font-black py-4 rounded-3xl flex items-center justify-center gap-2 shadow-lg shadow-primary/20">ENTRENAR AHORA <ChevronRight size={20} /></div>
                     </motion.div>
                   ) : (
-                    <div className="bg-muted/10 p-10 rounded-[40px] border border-dashed border-muted text-center">
-                      <Info className="mx-auto mb-4 text-muted-foreground/40" size={48} /><h3 className="text-xl font-bold mb-2 text-muted-foreground">Día de Descanso</h3>
-                    </div>
+                    <div className="bg-muted/10 p-10 rounded-[40px] border border-dashed border-muted text-center italic font-bold text-muted-foreground">RECUPEACIÓN ACTIVA</div>
                   )}
                 </AnimatePresence>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-card p-6 rounded-[35px] border border-muted flex flex-col justify-between min-h-[140px] relative overflow-hidden">
                     <Trophy className="absolute -right-2 -bottom-2 text-primary/10 w-20 h-20" />
@@ -174,29 +190,34 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : view === 'planner' ? (
               <PlannerView events={allEvents} token={session.provider_token} onUpdate={() => fetchCalendar(session.provider_token)} />
+            ) : (
+              <ProfileView userId={session.user.id} />
             )}
           </>
         )}
       </div>
 
-      {/* Navigation Bar */}
       {session && (
         <nav className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-muted flex justify-around items-center z-40">
-          <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1 ${view === 'home' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
             <LayoutGrid size={24} />
             <span className="text-[10px] font-bold uppercase">Inicio</span>
           </button>
-          <button onClick={() => setView('planner')} className={`flex flex-col items-center gap-1 ${view === 'planner' ? 'text-primary' : 'text-muted-foreground'}`}>
+          <button onClick={() => setView('planner')} className={`flex flex-col items-center gap-1 transition-all ${view === 'planner' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
             <Calendar size={24} />
             <span className="text-[10px] font-bold uppercase">Planner</span>
+          </button>
+          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 transition-all ${view === 'profile' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
+            <UserIcon size={24} />
+            <span className="text-[10px] font-bold uppercase">Perfil</span>
           </button>
         </nav>
       )}
 
       <AnimatePresence>
-        {isWorkoutActive && <WorkoutView workout={workout} onClose={() => setIsWorkoutActive(false)} onSave={(data) => {}} />}
+        {isWorkoutActive && <WorkoutView workout={workout} onClose={() => setIsWorkoutActive(false)} onSave={handleSaveWorkout} />}
       </AnimatePresence>
     </main>
   )
