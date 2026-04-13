@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { parseWorkoutDescription } from '@/lib/google-calendar'
-import { Timer, Dumbbell, Calendar, ChevronRight, LogOut, Info, CheckCircle } from 'lucide-react'
+import { Timer, Dumbbell, Calendar, ChevronRight, LogOut, Info, CheckCircle, Trophy, Zap } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import WorkoutView from '@/components/WorkoutView'
 
@@ -14,35 +14,99 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [isWorkoutActive, setIsWorkoutActive] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [streak, setStreak] = useState(0)
+  const [dynamosProgress, setDynamosProgress] = useState(0)
+
   const supabase = createClient()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      if (session) fetchWorkout(session.provider_token)
+      if (session) {
+        fetchWorkout(session.provider_token)
+        fetchStats(session.user.id)
+      }
       setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      if (session) fetchWorkout(session?.provider_token)
+      if (session) {
+        fetchWorkout(session?.provider_token)
+        fetchStats(session.user.id)
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  const fetchStats = async (userId: string) => {
+    try {
+      const { data: workouts, error: wError } = await supabase
+        .from('workouts')
+        .select('date')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+
+      if (workouts) {
+        const workoutDates = new Set(workouts.map(w => w.date))
+        let currentStreak = 0
+        let checkDate = new Date()
+        checkDate.setHours(0, 0, 0, 0)
+
+        // Si hoy no hay workout y no es domingo, verificamos desde ayer
+        const todayStr = checkDate.toISOString().split('T')[0]
+        if (!workoutDates.has(todayStr)) {
+          // Si hoy es domingo (0), la racha sigue viva esperando el resultado del sábado
+          // Si no es domingo, verificamos si ayer hubo entrenamiento
+          if (checkDate.getDay() !== 0) {
+            checkDate.setDate(checkDate.getDate() - 1)
+          }
+        }
+
+        // Empezamos a contar hacia atrás
+        for (let i = 0; i < 60; i++) { // Máximo 60 días atrás
+          const dateStr = checkDate.toISOString().split('T')[0]
+          const isSunday = checkDate.getDay() === 0
+
+          if (workoutDates.has(dateStr)) {
+            currentStreak++
+          } else if (isSunday) {
+            // Es domingo y no hay registro: El descanso está permitido, no suma pero no rompe
+            // Seguimos verificando el día anterior
+          } else {
+            // Es un día de entrenamiento y faltó: Se rompe la racha
+            break
+          }
+          checkDate.setDate(checkDate.getDate() - 1)
+        }
+        setStreak(currentStreak)
+
+        // Progreso Dínamos
+        const dynamoWorkouts = workouts.filter(w => w.calendar_event_summary?.includes('Dínamo'))
+        let maxDynamo = 0
+        dynamoWorkouts.forEach(w => {
+          const match = w.calendar_event_summary?.match(/(\d)/)
+          if (match) {
+            const level = parseInt(match[1])
+            if (level > maxDynamo) maxDynamo = level
+          }
+        })
+        setDynamosProgress(maxDynamo)
+      }
+    } catch (err) {
+      console.error('Error stats:', err)
+    }
+  }
 
   const fetchWorkout = async (token?: string | null) => {
     if (!token) return
     try {
       const res = await fetch(`/api/calendar?token=${token}`)
       const events = await res.json()
-      
-      if (events.error) throw new Error(events.error)
-
-      const workoutEvent = events.find((e: any) => 
+      const workoutEvent = events.find?.((e: any) => 
         e.summary?.includes('GYM') || e.summary?.includes('BICI') || e.summary?.includes('RETO')
       )
-      
       if (workoutEvent) {
         setWorkout({
           id: workoutEvent.id,
@@ -51,8 +115,7 @@ export default function Home() {
         })
       }
     } catch (err) {
-      console.error(err)
-      setError('Error al conectar con Google Calendar.')
+      setError('Error Calendar')
     }
   }
 
@@ -66,8 +129,7 @@ export default function Home() {
           calendar_event_summary: workout.title,
           feeling_notes: data.feeling
         })
-        .select()
-        .single()
+        .select().single()
 
       if (wError) throw wError
 
@@ -76,32 +138,26 @@ export default function Home() {
           workout_id: workoutRecord.id,
           exercise_name: ex.name,
           set_number: idx + 1,
-          reps_completed: parseInt(set.reps),
-          weight_kg: parseFloat(set.weight),
+          reps_completed: parseInt(set.reps) || 0,
+          weight_kg: parseFloat(set.weight) || 0,
         }))
       )
 
-      const { error: lError } = await supabase.from('exercise_logs').insert(logsToInsert)
-      if (lError) throw lError
-
+      await supabase.from('exercise_logs').insert(logsToInsert)
       setIsWorkoutActive(false)
       setIsSaved(true)
+      fetchStats(session.user.id)
       setTimeout(() => setIsSaved(false), 5000)
     } catch (err) {
-      alert('Error al guardar: Asegúrate de configurar Supabase.')
+      alert('Error al guardar')
     }
   }
 
   const handleLogin = async () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: origin,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
+        queryParams: { access_type: 'offline', prompt: 'consent' },
         scopes: 'https://www.googleapis.com/auth/calendar.readonly'
       }
     })
@@ -166,14 +222,29 @@ export default function Home() {
               </motion.div>
             )}
           </AnimatePresence>
+
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-card p-6 rounded-[35px] border border-muted flex flex-col justify-between min-h-[140px]">
-              <div><p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-1">Dínamos</p><p className="text-3xl font-black">1/4</p></div>
-              <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: '25%' }} className="bg-primary h-full" /></div>
+            <div className="bg-card p-6 rounded-[35px] border border-muted flex flex-col justify-between min-h-[140px] relative overflow-hidden">
+              <Trophy className="absolute -right-2 -bottom-2 text-primary/10 w-20 h-20" />
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-1">Dínamos</p>
+                <p className="text-3xl font-black">{dynamosProgress}/4</p>
+              </div>
+              <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${(dynamosProgress / 4) * 100}%` }} className="bg-primary h-full" />
+              </div>
             </div>
-            <div className="bg-card p-6 rounded-[35px] border border-muted flex flex-col justify-between min-h-[140px]">
-              <div><p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-1">Racha</p><p className="text-3xl font-black">3 <span className="text-sm text-muted-foreground font-medium">Días</span></p></div>
-              <div className="flex gap-1 mt-2">{[1,1,1,0,0,0,0].map((on, i) => (<div key={i} className={`h-1.5 flex-1 rounded-full ${on ? 'bg-secondary' : 'bg-muted'}`} />))}</div>
+            <div className="bg-card p-6 rounded-[35px] border border-muted flex flex-col justify-between min-h-[140px] relative overflow-hidden">
+              <Zap className="absolute -right-2 -bottom-2 text-secondary/10 w-20 h-20" />
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-1">Racha</p>
+                <p className="text-3xl font-black">{streak} <span className="text-sm text-muted-foreground font-medium">Días</span></p>
+              </div>
+              <div className="flex gap-1 mt-2">
+                {[...Array(7)].map((_, i) => (
+                  <div key={i} className={`h-1.5 flex-1 rounded-full ${i < streak ? 'bg-secondary' : 'bg-muted'}`} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
