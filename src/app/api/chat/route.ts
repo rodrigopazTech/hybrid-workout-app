@@ -1,12 +1,13 @@
 import { Groq } from 'groq-sdk';
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-// DOCUMENTACIÓN OFICIAL: Forzamos que la ruta sea dinámica para evitar que Next.js 
-// intente evaluarla durante el 'next build' sin tener las variables de entorno.
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   const apiKey = process.env.GROQ_API_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   
   if (!apiKey || apiKey === 'dummy_key_for_build') {
     return NextResponse.json({ error: 'IA no configurada' }, { status: 500 });
@@ -15,21 +16,38 @@ export async function POST(request: Request) {
   const { messages, userId, token } = await request.json();
 
   try {
+    // 1. OBTENER CONTEXTO REAL DEL ATLETA DESDE SUPABASE
+    const supabase = createClient(supabaseUrl!, supabaseAnonKey!);
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    const athleteContext = profile 
+      ? `DATOS ACTUALES DEL ATLETA:
+         - Peso: ${profile.weight_kg}kg
+         - Estatura: ${profile.height_cm}cm
+         - Meta: ${profile.fitness_goal}
+         - Nivel: ${profile.fitness_level}`
+      : "Contexto: El atleta aún no ha completado su perfil detallado.";
+
     const groq = new Groq({ apiKey });
 
     const completion = await groq.chat.completions.create({
-      // MODELO ACTUALIZADO: llama-3.3-70b-versatile
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: `Eres un Coach de Rendimiento Híbrido de Élite llamado "Dínamo Coach". 
-          Tu objetivo es ayudar al atleta a subir el 4to Dínamo en la CDMX y ganar masa muscular.
-          Contexto del atleta: Pesa 65kg, mide 170cm. Su plan es de 4 semanas.
-          Eres directo, motivador, técnico y enfocado en la ciencia del deporte. 
-          Puedes consultar su perfil, su plan semanal y mover entrenamientos si te lo pide.
-          Si el usuario dice que está cansado o le duele algo, recomiéndale descanso activo o reprogramar.
-          Habla en español de México, de forma natural pero profesional.`
+          content: `Eres "Dínamo Coach", un experto en ciclismo de ruta y entrenamiento de fuerza en la CDMX.
+          
+          ${athleteContext}
+          
+          REGLAS CRÍTICAS:
+          1. YA CONOCES los datos del atleta mencionados arriba. No vuelvas a preguntarle su peso o sus metas a menos que sea para sugerir un cambio.
+          2. Tus respuestas deben ser altamente técnicas pero con lenguaje de gimnasio/ciclismo de México.
+          3. Dado que su meta es subir al 4to Dínamo con 65kg de peso, enfócate en la relación potencia-peso y en la resistencia en pendientes >10%.
+          4. Si pregunta por equipo (ej. bici estática vs ruta), recuérdale que para los Dínamos la técnica de manejo y el equilibrio en ruta son vitales, por lo que la bici real es superior.`
         },
         ...messages
       ],
@@ -37,16 +55,8 @@ export async function POST(request: Request) {
         {
           type: "function",
           function: {
-            name: "get_user_profile",
-            description: "Obtener peso, altura y metas actuales del usuario desde la base de datos.",
-            parameters: { type: "object", properties: {} }
-          }
-        },
-        {
-          type: "function",
-          function: {
             name: "get_weekly_plan",
-            description: "Obtener los entrenamientos programados para los próximos 7 días en Google Calendar.",
+            description: "Ver entrenamientos programados. Solo usar si el usuario pide ver su plan.",
             parameters: { type: "object", properties: {} }
           }
         },
@@ -54,12 +64,12 @@ export async function POST(request: Request) {
           type: "function",
           function: {
             name: "reschedule_workout",
-            description: "Mover un entrenamiento a una nueva fecha.",
+            description: "Mover un entrenamiento. Solo usar si el usuario ORDENA reprogramar.",
             parameters: {
               type: "object",
               properties: {
-                eventId: { type: "string", description: "El ID del evento de Google Calendar" },
-                newDate: { type: "string", description: "La nueva fecha en formato ISO (YYYY-MM-DD)" }
+                eventId: { type: "string", description: "ID del evento" },
+                newDate: { type: "string", description: "Nueva fecha ISO" }
               },
               required: ["eventId", "newDate"]
             }
@@ -73,7 +83,7 @@ export async function POST(request: Request) {
 
     if (responseMessage.tool_calls) {
       return NextResponse.json({ 
-        message: "Entendido, Rodrigo. Estoy procesando tu solicitud...",
+        message: "Entendido. Estoy ajustando tu plan en el sistema...",
         tool_calls: responseMessage.tool_calls 
       });
     }
