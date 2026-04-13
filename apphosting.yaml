@@ -1,0 +1,12 @@
+kind: "AppStack"
+apiVersion: "v1"
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+  minInstances: 0
+  maxInstances: 2
+env:
+  - variable: NEXT_PUBLIC_SUPABASE_URL
+    value: "your_supabase_url" # Cámbialo por tu URL real
+  - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    value: "your_supabase_anon_key" # Cámbialo por tu llave real

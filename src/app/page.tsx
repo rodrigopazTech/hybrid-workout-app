@@ -1,65 +1,184 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase'
+import { parseWorkoutDescription } from '@/lib/google-calendar'
+import { Timer, Dumbbell, Calendar, ChevronRight, LogOut, Info, CheckCircle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import WorkoutView from '@/components/WorkoutView'
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+  const [session, setSession] = useState<any>(null)
+  const [workout, setWorkout] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isWorkoutActive, setIsWorkoutActive] = useState(false)
+  const [isSaved, setIsSaved] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      if (session) fetchWorkout(session.provider_token)
+      setLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (session) fetchWorkout(session?.provider_token)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const fetchWorkout = async (token?: string | null) => {
+    if (!token) return
+    try {
+      const res = await fetch(`/api/calendar?token=${token}`)
+      const events = await res.json()
+      
+      if (events.error) throw new Error(events.error)
+
+      const workoutEvent = events.find((e: any) => 
+        e.summary?.includes('GYM') || e.summary?.includes('BICI') || e.summary?.includes('RETO')
+      )
+      
+      if (workoutEvent) {
+        setWorkout({
+          id: workoutEvent.id,
+          title: workoutEvent.summary,
+          exercises: parseWorkoutDescription(workoutEvent.description || '')
+        })
+      }
+    } catch (err) {
+      console.error(err)
+      setError('Error al conectar con Google Calendar.')
+    }
+  }
+
+  const handleSaveWorkout = async (data: any) => {
+    try {
+      const { data: workoutRecord, error: wError } = await supabase
+        .from('workouts')
+        .insert({
+          user_id: session.user.id,
+          date: new Date().toISOString().split('T')[0],
+          calendar_event_summary: workout.title,
+          feeling_notes: data.feeling
+        })
+        .select()
+        .single()
+
+      if (wError) throw wError
+
+      const logsToInsert = data.exercises.flatMap((ex: any) => 
+        ex.sets.map((set: any, idx: number) => ({
+          workout_id: workoutRecord.id,
+          exercise_name: ex.name,
+          set_number: idx + 1,
+          reps_completed: parseInt(set.reps),
+          weight_kg: parseFloat(set.weight),
+        }))
+      )
+
+      const { error: lError } = await supabase.from('exercise_logs').insert(logsToInsert)
+      if (lError) throw lError
+
+      setIsWorkoutActive(false)
+      setIsSaved(true)
+      setTimeout(() => setIsSaved(false), 5000)
+    } catch (err) {
+      alert('Error al guardar: Asegúrate de configurar Supabase.')
+    }
+  }
+
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+        scopes: 'https://www.googleapis.com/auth/calendar.readonly'
+      }
+    })
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen bg-background text-primary">
+      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full" />
     </div>
-  );
+  )
+
+  return (
+    <main className="flex flex-col min-h-screen bg-background text-foreground p-6 max-w-md mx-auto">
+      <header className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">HÍBRIDO <span className="text-primary">CDMX</span></h1>
+          <p className="text-muted-foreground text-sm font-medium">Objetivo: Los Dínamos</p>
+        </div>
+        {session && (
+          <button onClick={() => supabase.auth.signOut()} className="p-2 bg-card rounded-2xl text-muted-foreground border border-muted hover:text-white transition-all">
+            <LogOut size={20} />
+          </button>
+        )}
+      </header>
+
+      {!session ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-card p-10 rounded-[40px] border border-muted shadow-2xl relative">
+            <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-primary p-4 rounded-2xl shadow-xl shadow-primary/40">
+              <Dumbbell className="text-white w-8 h-8" />
+            </div>
+            <h2 className="text-3xl font-black mb-4 leading-tight mt-4">Rompe tus<br />límites</h2>
+            <p className="text-muted-foreground mb-10 text-balance">Conéctate para ver tu rutina híbrida y registrar tu progreso hacia la cima.</p>
+            <button onClick={handleLogin} className="w-full bg-white text-black font-extrabold py-5 rounded-3xl flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg">
+              <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+              Entrar con Google
+            </button>
+          </motion.div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {isSaved && (
+             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="bg-secondary/20 border border-secondary/50 p-4 rounded-2xl flex items-center gap-3 text-secondary font-bold">
+              <CheckCircle size={20} /> ¡Entrenamiento guardado!
+            </motion.div>
+          )}
+          <AnimatePresence mode="wait">
+            {workout ? (
+              <motion.div key="workout-active" whileTap={{ scale: 0.98 }} onClick={() => setIsWorkoutActive(true)} className="bg-card p-8 rounded-[40px] border border-primary/20 shadow-xl relative overflow-hidden group cursor-pointer">
+                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-30 transition-opacity"><Calendar size={120} /></div>
+                <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-3">Rutina de Hoy</h3>
+                <h2 className="text-3xl font-black mb-6 leading-tight">{workout.title}</h2>
+                <div className="flex items-center gap-6 text-sm text-muted-foreground mb-8">
+                  <div className="flex items-center gap-2"><Dumbbell size={16} className="text-primary" /><span className="font-bold text-foreground">{workout.exercises.length} ejercicios</span></div>
+                  <div className="flex items-center gap-2"><Timer size={16} className="text-primary" /><span className="font-bold text-foreground">~60 min</span></div>
+                </div>
+                <div className="w-full bg-primary text-white font-black py-5 rounded-3xl flex items-center justify-center gap-2 shadow-xl shadow-primary/20">INICIAR SESIÓN <ChevronRight size={20} /></div>
+              </motion.div>
+            ) : (
+              <motion.div key="workout-empty" className="bg-muted/10 p-10 rounded-[40px] border border-dashed border-muted text-center">
+                <Info className="mx-auto mb-4 text-muted-foreground/40" size={48} /><h3 className="text-xl font-bold mb-2">Día de recuperación</h3><p className="text-sm text-muted-foreground/60">No hay rutinas programadas para hoy.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-card p-6 rounded-[35px] border border-muted flex flex-col justify-between min-h-[140px]">
+              <div><p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-1">Dínamos</p><p className="text-3xl font-black">1/4</p></div>
+              <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: '25%' }} className="bg-primary h-full" /></div>
+            </div>
+            <div className="bg-card p-6 rounded-[35px] border border-muted flex flex-col justify-between min-h-[140px]">
+              <div><p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mb-1">Racha</p><p className="text-3xl font-black">3 <span className="text-sm text-muted-foreground font-medium">Días</span></p></div>
+              <div className="flex gap-1 mt-2">{[1,1,1,0,0,0,0].map((on, i) => (<div key={i} className={`h-1.5 flex-1 rounded-full ${on ? 'bg-secondary' : 'bg-muted'}`} />))}</div>
+            </div>
+          </div>
+        </div>
+      )}
+      <AnimatePresence>
+        {isWorkoutActive && <WorkoutView workout={workout} onClose={() => setIsWorkoutActive(false)} onSave={handleSaveWorkout} />}
+      </AnimatePresence>
+    </main>
+  )
 }
