@@ -12,27 +12,32 @@ interface WorkoutViewProps {
 }
 
 export default function WorkoutView({ workout, onClose, onSave }: WorkoutViewProps) {
+  // Corregimos la inicialización para que cada objeto de "set" sea una instancia única en memoria
   const [exerciseLogs, setExerciseLogs] = useState<any>(
     workout.exercises.map((ex: any) => ({
       ...ex,
-      sets: Array(ex.sets).fill({ reps: ex.reps, weight: ex.initialWeight, completed: false })
+      sets: Array.from({ length: ex.sets }, () => ({ 
+        reps: ex.reps.toString().replace(/[^0-9]/g, ''), 
+        weight: ex.initialWeight.toString().replace(/[^0-9]/g, ''), 
+        completed: false 
+      }))
     }))
   )
   const [feeling, setFeeling] = useState('')
-  const [isFinishing, setIsFinishing] = useState(false)
 
   const updateSet = (exIndex: number, setIndex: number, field: string, value: any) => {
     const newLogs = [...exerciseLogs]
-    newLogs[exIndex].sets[setIndex] = { 
-      ...newLogs[exIndex].sets[setIndex], 
-      [field]: value 
-    }
+    const newSets = [...newLogs[exIndex].sets]
+    newSets[setIndex] = { ...newSets[setIndex], [field]: value }
+    newLogs[exIndex] = { ...newLogs[exIndex], sets: newSets }
     setExerciseLogs(newLogs)
   }
 
   const toggleSet = (exIndex: number, setIndex: number) => {
     const newLogs = [...exerciseLogs]
-    newLogs[exIndex].sets[setIndex].completed = !newLogs[exIndex].sets[setIndex].completed
+    const newSets = [...newLogs[exIndex].sets]
+    newSets[setIndex] = { ...newSets[setIndex], completed: !newSets[setIndex].completed }
+    newLogs[exIndex] = { ...newLogs[exIndex], sets: newSets }
     setExerciseLogs(newLogs)
   }
 
@@ -74,14 +79,16 @@ export default function WorkoutView({ workout, onClose, onSave }: WorkoutViewPro
                 <div className="text-center font-bold text-lg">{setIdx + 1}</div>
                 <input 
                   type="number" 
-                  value={set.weight.replace(/[^0-9]/g, '')} 
+                  inputMode="decimal"
+                  value={set.weight} 
                   onChange={(e) => updateSet(exIdx, setIdx, 'weight', e.target.value)}
                   className="bg-muted/50 border-none rounded-xl p-2 text-center text-lg font-bold w-full focus:ring-2 focus:ring-primary"
                 />
                 <div className="col-span-2 flex items-center gap-2">
                    <input 
                     type="number" 
-                    value={set.reps.replace(/[^0-9]/g, '')} 
+                    inputMode="numeric"
+                    value={set.reps} 
                     onChange={(e) => updateSet(exIdx, setIdx, 'reps', e.target.value)}
                     className="bg-muted/50 border-none rounded-xl p-2 text-center text-lg font-bold w-full focus:ring-2 focus:ring-primary"
                   />
