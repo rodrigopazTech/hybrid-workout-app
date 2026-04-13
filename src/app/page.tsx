@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import WorkoutView from '@/components/WorkoutView'
 import PlannerView from '@/components/PlannerView'
 import ProfileView from '@/components/ProfileView'
+import AICoach from '@/components/AICoach' // Nuevo import
 
 export default function Home() {
   const [session, setSession] = useState<any>(null)
@@ -174,7 +175,7 @@ export default function Home() {
                       <div className="w-full bg-primary text-white font-black py-4 rounded-3xl flex items-center justify-center gap-2 shadow-lg shadow-primary/20">ENTRENAR AHORA <ChevronRight size={20} /></div>
                     </motion.div>
                   ) : (
-                    <div className="bg-muted/10 p-10 rounded-[40px] border border-dashed border-muted text-center italic font-bold text-muted-foreground">RECUPEACIÓN ACTIVA</div>
+                    <div className="bg-muted/10 p-10 rounded-[40px] border border-dashed border-muted text-center italic font-bold text-muted-foreground uppercase tracking-widest">Recuperación Activa</div>
                   )}
                 </AnimatePresence>
                 <div className="grid grid-cols-2 gap-4">
@@ -200,20 +201,25 @@ export default function Home() {
       </div>
 
       {session && (
-        <nav className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-muted flex justify-around items-center z-40">
-          <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
-            <LayoutGrid size={24} />
-            <span className="text-[10px] font-bold uppercase">Inicio</span>
-          </button>
-          <button onClick={() => setView('planner')} className={`flex flex-col items-center gap-1 transition-all ${view === 'planner' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
-            <Calendar size={24} />
-            <span className="text-[10px] font-bold uppercase">Planner</span>
-          </button>
-          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 transition-all ${view === 'profile' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
-            <UserIcon size={24} />
-            <span className="text-[10px] font-bold uppercase">Perfil</span>
-          </button>
-        </nav>
+        <>
+          <nav className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-muted flex justify-around items-center z-40">
+            <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
+              <LayoutGrid size={24} />
+              <span className="text-[10px] font-bold uppercase">Inicio</span>
+            </button>
+            <button onClick={() => setView('planner')} className={`flex flex-col items-center gap-1 transition-all ${view === 'planner' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
+              <Calendar size={24} />
+              <span className="text-[10px] font-bold uppercase">Planner</span>
+            </button>
+            <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 transition-all ${view === 'profile' ? 'text-primary scale-110' : 'text-muted-foreground opacity-50'}`}>
+              <UserIcon size={24} />
+              <span className="text-[10px] font-bold uppercase">Perfil</span>
+            </button>
+          </nav>
+          
+          {/* Coach de IA Flotante */}
+          <AICoach userId={session.user.id} token={session.provider_token} />
+        </>
       )}
 
       <AnimatePresence>
