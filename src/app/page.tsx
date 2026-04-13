@@ -93,9 +93,11 @@ export default function Home() {
   }
 
   const handleLogin = async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
+        redirectTo: origin,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
