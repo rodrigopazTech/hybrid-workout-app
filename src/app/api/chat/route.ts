@@ -1,24 +1,24 @@
 import { Groq } from 'groq-sdk';
 import { NextResponse } from 'next/server';
 
+// DOCUMENTACIÓN OFICIAL: Forzamos que la ruta sea dinámica para evitar que Next.js 
+// intente evaluarla durante el 'next build' sin tener las variables de entorno.
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
-  // Verificamos la llave de forma manual antes de instanciar el SDK
   const apiKey = process.env.GROQ_API_KEY;
   
   if (!apiKey || apiKey === 'dummy_key_for_build') {
-    console.error('GROQ_API_KEY no configurada');
-    return NextResponse.json({ error: 'Configuración de IA incompleta' }, { status: 500 });
+    return NextResponse.json({ error: 'IA no configurada' }, { status: 500 });
   }
 
   const { messages, userId, token } = await request.json();
-
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const groq = new Groq({ apiKey });
 
     const completion = await groq.chat.completions.create({
-      // ACTUALIZADO: Usando el modelo más reciente y soportado
+      // MODELO ACTUALIZADO: llama-3.3-70b-versatile
       model: "llama-3.3-70b-versatile",
       messages: [
         {
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
     if (responseMessage.tool_calls) {
       return NextResponse.json({ 
-        message: "Entendido, Rodrigo. Estoy procesando tu solicitud para ajustar tu plan...",
+        message: "Entendido, Rodrigo. Estoy procesando tu solicitud...",
         tool_calls: responseMessage.tool_calls 
       });
     }
@@ -81,6 +81,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: responseMessage.content });
   } catch (error) {
     console.error('Groq API Error:', error);
-    return NextResponse.json({ error: 'Coach is offline' }, { status: 500 });
+    return NextResponse.json({ error: 'Coach offline' }, { status: 500 });
   }
 }
