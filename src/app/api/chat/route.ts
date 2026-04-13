@@ -1,20 +1,25 @@
 import { Groq } from 'groq-sdk';
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase'; // Ajuste: Usar helper directo o crear uno server-side
-// Necesitaremos un cliente de Supabase para el servidor
-import { createBrowserClient } from '@supabase/ssr'
 
 export async function POST(request: Request) {
-  // Inicializamos Groq dentro del handler para que no falle el build de Next.js en Firebase
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || 'dummy_key_for_build' });
+  // Verificamos la llave de forma manual antes de instanciar el SDK
+  const apiKey = process.env.GROQ_API_KEY;
+  
+  if (!apiKey || apiKey === 'dummy_key_for_build') {
+    console.error('GROQ_API_KEY no configurada');
+    return NextResponse.json({ error: 'Configuración de IA incompleta' }, { status: 500 });
+  }
 
   const { messages, userId, token } = await request.json();
 
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
+    const groq = new Groq({ apiKey });
+
     const completion = await groq.chat.completions.create({
-      model: "llama3-70b-8192",
+      // ACTUALIZADO: Usando el modelo más reciente y soportado
+      model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
@@ -66,8 +71,6 @@ export async function POST(request: Request) {
 
     const responseMessage = completion.choices[0].message;
 
-    // Lógica básica para manejar llamadas a herramientas (simplificada para esta fase)
-    // En una implementación real, aquí ejecutaríamos las funciones y devolveríamos el resultado a Groq
     if (responseMessage.tool_calls) {
       return NextResponse.json({ 
         message: "Entendido, Rodrigo. Estoy procesando tu solicitud para ajustar tu plan...",
