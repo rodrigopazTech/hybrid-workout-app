@@ -7,6 +7,6 @@ runConfig:
   maxInstances: 2
 env:
   - variable: NEXT_PUBLIC_SUPABASE_URL
-    value: "your_supabase_url" # Cámbialo por tu URL real
+    value: "https://xsgfjklffiewdbcaqwsc.supabase.co" # Cámbialo por tu URL real
   - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
-    value: "your_supabase_anon_key" # Cámbialo por tu llave real
+    value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzZ2Zqa2xmZmlld2RiY2Fxd3NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTc0NzEsImV4cCI6MjA5MTY3MzQ3MX0.qRe1tYreCYJTFj1GC3t8y8XuPuqiImi9xxSxZ3Hj7qM" # Cámbialo por tu llave real
