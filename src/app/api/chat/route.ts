@@ -4,9 +4,10 @@ import { createClient } from '@/lib/supabase'; // Ajuste: Usar helper directo o 
 // Necesitaremos un cliente de Supabase para el servidor
 import { createBrowserClient } from '@supabase/ssr'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
 export async function POST(request: Request) {
+  // Inicializamos Groq dentro del handler para que no falle el build de Next.js en Firebase
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || 'dummy_key_for_build' });
+
   const { messages, userId, token } = await request.json();
 
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

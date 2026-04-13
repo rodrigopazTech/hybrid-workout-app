@@ -7,6 +7,8 @@ runConfig:
   maxInstances: 2
 env:
   - variable: NEXT_PUBLIC_SUPABASE_URL
-    value: "https://xsgfjklffiewdbcaqwsc.supabase.co" # Cámbialo por tu URL real
+    secret: supabase_url
   - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
-    value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzZ2Zqa2xmZmlld2RiY2Fxd3NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTc0NzEsImV4cCI6MjA5MTY3MzQ3MX0.qRe1tYreCYJTFj1GC3t8y8XuPuqiImi9xxSxZ3Hj7qM" # Cámbialo por tu llave real
+    secret: supabase_anon_key
+  - variable: GROQ_API_KEY
+    secret: groq_api_key

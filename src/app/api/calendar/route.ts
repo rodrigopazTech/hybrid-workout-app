@@ -1,6 +1,8 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
 
+const CALENDAR_ID = '8f21180b84e74cdcd3fd2e471da2c3c3591b5a56b487944005589372b61cb8a9@group.calendar.google.com';
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const accessToken = searchParams.get('token');
@@ -18,7 +20,7 @@ export async function GET(request: Request) {
     const endRange = new Date(now.getTime() + (days * 24 * 60 * 60 * 1000));
 
     const response = await calendar.events.list({
-      calendarId: 'primary',
+      calendarId: CALENDAR_ID,
       timeMin: startOfDay.toISOString(),
       timeMax: endRange.toISOString(),
       singleEvents: true,
@@ -45,7 +47,7 @@ export async function PATCH(request: Request) {
     const calendar = google.calendar({ version: 'v3', auth });
 
     const response = await calendar.events.patch({
-      calendarId: 'primary',
+      calendarId: CALENDAR_ID,
       eventId: eventId,
       requestBody: {
         summary,
