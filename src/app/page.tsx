@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { parseWorkoutDescription } from '@/lib/google-calendar'
-import { Timer, Dumbbell, Calendar, ChevronRight, LogOut, Info, CheckCircle, Trophy, Zap, LayoutGrid, User as UserIcon } from 'lucide-react'
+import { Timer, Dumbbell, Calendar, ChevronRight, LogOut, Info, CheckCircle, Trophy, Zap, LayoutGrid, User as UserIcon, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import WorkoutView from '@/components/WorkoutView'
 import PlannerView from '@/components/PlannerView'
 import ProfileView from '@/components/ProfileView'
-import AICoach from '@/components/AICoach' // Nuevo import
+import AICoach from '@/components/AICoach'
 
 export default function Home() {
   const [session, setSession] = useState<any>(null)
@@ -20,16 +20,31 @@ export default function Home() {
   const [isSaved, setIsSaved] = useState(false)
   const [streak, setStreak] = useState(0)
   const [dynamosProgress, setDynamosProgress] = useState(0)
-
-  const supabase = createClient()
+  const [initError, setInitError] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session) fetchAllData(session.provider_token, session.user.id)
-      setLoading(false)
-    })
+    async function init() {
+      try {
+        const supabase = createClient()
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) throw error
+        
+        setSession(session)
+        if (session) {
+          await fetchAllData(session.provider_token, session.user.id)
+        }
+      } catch (err: any) {
+        console.error('Initialization error:', err)
+        setInitError('No se pudo conectar con el servidor. Verifica las variables de entorno en Firebase.')
+      } finally {
+        setLoading(false)
+      }
+    }
 
+    init()
+
+    const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       if (session) fetchAllData(session?.provider_token, session.user.id)
@@ -40,7 +55,11 @@ export default function Home() {
 
   const fetchAllData = async (token: string | null | undefined, userId: string) => {
     if (!token) return
-    await Promise.all([fetchCalendar(token), fetchStats(userId)])
+    try {
+      await Promise.all([fetchCalendar(token), fetchStats(userId)])
+    } catch (e) {
+      console.error('Data fetch error:', e)
+    }
   }
 
   const fetchCalendar = async (token: string) => {
@@ -60,15 +79,14 @@ export default function Home() {
           title: workoutEvent.summary,
           exercises: parseWorkoutDescription(workoutEvent.description || '')
         })
-      } else {
-        setWorkout(null)
       }
     } catch (err) {
-      console.error(err)
+      console.error('Calendar error:', err)
     }
   }
 
   const fetchStats = async (userId: string) => {
+    const supabase = createClient()
     const { data: workouts } = await supabase.from('workouts').select('date, calendar_event_summary').eq('user_id', userId).order('date', { ascending: false })
     if (workouts) {
       const workoutDates = new Set(workouts.map(w => w.date))
@@ -92,11 +110,10 @@ export default function Home() {
   }
 
   const handleLogin = async () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+    const supabase = createClient()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: origin,
         queryParams: { access_type: 'offline', prompt: 'consent' },
         scopes: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'
       }
@@ -105,6 +122,7 @@ export default function Home() {
 
   const handleSaveWorkout = async (data: any) => {
     try {
+      const supabase = createClient()
       const { data: workoutRecord, error: wError } = await supabase
         .from('workouts')
         .insert({
@@ -137,7 +155,21 @@ export default function Home() {
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen bg-background text-primary"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full" /></div>
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background text-primary gap-4">
+      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full" />
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-50">Sincronizando Sistema...</p>
+    </div>
+  )
+
+  if (initError) return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-10 text-center">
+      <AlertCircle className="text-red-500 mb-4" size={48} />
+      <h2 className="text-xl font-black mb-2">Error de Conexión</h2>
+      <p className="text-sm text-muted-foreground mb-6">{initError}</p>
+      <button onClick={() => window.location.reload()} className="bg-muted px-6 py-3 rounded-2xl font-bold">Reintentar</button>
+    </div>
+  )
 
   return (
     <main className="flex flex-col min-h-screen bg-background text-foreground max-w-md mx-auto relative pb-24">
@@ -148,7 +180,7 @@ export default function Home() {
             {view === 'home' ? 'Dashboard' : view === 'planner' ? 'Planner Semanal' : 'Perfil Atleta'}
           </p>
         </div>
-        {session && <button onClick={() => supabase.auth.signOut()} className="p-2 bg-card rounded-xl border border-muted text-muted-foreground hover:text-white transition-all"><LogOut size={18} /></button>}
+        {session && <button onClick={() => createClient().auth.signOut()} className="p-2 bg-card rounded-xl border border-muted text-muted-foreground hover:text-white transition-all"><LogOut size={18} /></button>}
       </header>
 
       <div className="p-6 flex-1 overflow-y-auto">
@@ -218,8 +250,6 @@ export default function Home() {
               <span className="text-[10px] font-bold uppercase">Perfil</span>
             </button>
           </nav>
-          
-          {/* Coach de IA Flotante */}
           <AICoach userId={session.user.id} token={session.provider_token} />
         </>
       )}
