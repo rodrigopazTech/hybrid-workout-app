@@ -7,8 +7,17 @@ runConfig:
   maxInstances: 2
 env:
   - variable: NEXT_PUBLIC_SUPABASE_URL
-    secret: supabase_url
+    secret: NEXT_PUBLIC_SUPABASE_URL
+    availability:
+      - BUILD
+      - RUNTIME
   - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
-    secret: supabase_anon_key
+    secret: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    availability:
+      - BUILD
+      - RUNTIME
   - variable: GROQ_API_KEY
-    secret: groq_api_key
+    secret: GROQ_API_KEY
+    availability:
+      - BUILD
+      - RUNTIME
